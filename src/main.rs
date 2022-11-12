@@ -24,19 +24,19 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn usage() -> () {
+fn usage() {
     io::stdout()
         .write_all("\nusage: tree-rs [-ad] [--version] [--help] [--] [directory ...]\n".as_bytes())
         .unwrap();
 }
 
-fn version() -> () {
+fn version() {
     let ver = env!("CARGO_PKG_VERSION");
     io::stdout()
         .write_all(format!("\ntree v{}\n", ver).as_bytes())
         .unwrap();
 }
 
-fn write_to_err(content: &str) -> () {
+fn write_to_err(content: &str) {
     io::stderr().write_all(content.as_bytes()).unwrap();
 }
