@@ -26,4 +26,5 @@ Restrictions:
 ## 0.1.3
 - [ ] support arbitrary list of directories as positional args and perform tree search & display
 - [ ] when multiple directories are used, the count of dirs & files includes all locations
+- [ ] support `-l` option (list directories only)
 - [ ] write integration test, assert C `tree` == `tree-rs`
