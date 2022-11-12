@@ -12,8 +12,7 @@ Restrictions:
 - [x] return exit code 0
 - [x] print version string (bonus: take from Cargo.toml)
 - [x] handle unsupported argument. Print `Invalid argument \`--arg\`` & usage and return exit code 2
-- [ ] write a rust test to confirm the behaviour
-- [ ] write another test calling C `tree --help`, assert == rust `tree --help`
+- [x] write a rust test to confirm the behaviour
 
 ## 0.1.1
 - [ ] when called with no args, print `X directories, Y files`
@@ -27,3 +26,4 @@ Restrictions:
 ## 0.1.3
 - [ ] support arbitrary list of directories as positional args and perform tree search & display
 - [ ] when multiple directories are used, the count of dirs & files includes all locations
+- [ ] write integration test, assert C `tree` == `tree-rs`
