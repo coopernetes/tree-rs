@@ -15,7 +15,7 @@ Restrictions:
 - [x] write a rust test to confirm the behaviour
 
 ## 0.1.1
-- [ ] when called with no args, print `X directories, Y files`
+- [x] when called with no args, print `X directories, Y files`
 
 ## 0.1.2
 - [ ] display tree view of directories & files in current working dir
