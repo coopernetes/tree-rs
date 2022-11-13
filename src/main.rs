@@ -15,11 +15,9 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
-use std::{env, fs, io};
+use std::{env, io};
 use std::io::{stdout, stderr, Write};
 use std::path::Path;
-
-use walkdir;
 
 fn main() {
     let env_vars = env::args();
@@ -30,15 +28,18 @@ fn main() {
     };
 }
 
-fn create_fd_count(p: &Path) -> Result<String, io::Error> {
+fn create_fd_count(root: &Path) -> Result<String, io::Error> {
     let (mut d, mut f) = (0, 0);
-    for entry in walkdir::WalkDir::new(p).into_iter().skip(1) {
+    for entry in walkdir::WalkDir::new(root).into_iter().skip(1) {
         let de = entry.as_ref()
             .unwrap();
 
-        // TODO: Fix this filtering. If any parent dirs start with a '.', skip is true.
-        //       By default, TMPDIR = /tmp/.tmp<randomBits> and every DirEntry is skipped.
-        let skip = de.path().iter().any(|s| {
+        let non_root_parts = de.path().iter().filter(|&des| {
+            !root.iter().any(|rs| {
+                rs.to_str().expect("") == des.to_str().expect("")
+            })
+        }).collect::<Vec<_>>();
+        let skip = non_root_parts.iter().any(|s| {
             let c = s.to_str().unwrap().chars().next().unwrap();
             c == '.'
         });
@@ -52,16 +53,15 @@ fn create_fd_count(p: &Path) -> Result<String, io::Error> {
             f += 1;
         }
     };
-    Ok(format!("{d} directories, {f} files."))
+    Ok(format!("{d} directories, {f} files.\n"))
 }
 
 fn parse_args(args: Vec<String>) -> Result<(), i32>{
-    let (mut a_flag, mut d_flag) = (false, false);
+    let (mut a_flag, mut d_flag, mut l_flag) = (false, false, false);
     let args_i = args.iter();
     for arg in args_i.skip(1) {
         match arg.as_str() {
             "--help" => {
-                io::stdout().write_all("\n".as_bytes()).unwrap();
                 usage();
                 return Ok(())
             }
@@ -71,6 +71,7 @@ fn parse_args(args: Vec<String>) -> Result<(), i32>{
             }
             "-a" => a_flag = true,
             "-d" => d_flag = true,
+            "-l" => l_flag = true,
             _ => {
                 write_to_err(format!("tree-rs: Invalid argument `{}'.\n", arg));
                 usage();
@@ -78,6 +79,8 @@ fn parse_args(args: Vec<String>) -> Result<(), i32>{
             }
         }
     }
+    //TODO: Remove this stderr message. Using to suppress rustc warnings (for now)
+    write_to_err(format!("Flags: a={a_flag} d={d_flag} l={l_flag}\n"));
     let out_s = create_fd_count(Path::new("."))
         .or(Err(1));
     stdout().write_all(out_s?.as_bytes())
@@ -85,15 +88,15 @@ fn parse_args(args: Vec<String>) -> Result<(), i32>{
 }
 
 fn usage() {
-    io::stdout()
-        .write_all("usage: tree-rs [-ad] [--version] [--help] [--] [directory ...]\n".as_bytes())
+    stdout()
+        .write_all("usage: tree-rs [-adl] [--version] [--help] [--] [directory ...]\n".as_bytes())
         .unwrap();
 }
 
 fn version() {
     let ver = env!("CARGO_PKG_VERSION");
     stdout()
-        .write_all(format!("\ntree v{}\n", ver).as_bytes())
+        .write_all(format!("tree v{}\n", ver).as_bytes())
         .unwrap();
 }
 
@@ -107,10 +110,9 @@ fn write_to_err(content: String) {
 mod tests {
 
     #![allow(unused_imports)]
-
-    use tempfile;
-
     use super::*;
+    use std::fs;
+    use tempfile;
 
     fn setup(tmpdir: &Path) {
         for i in vec![1, 2, 3, 4, 5].iter() {
@@ -171,7 +173,7 @@ mod tests {
         let d = tmpdir.path();
         setup(d);
 
-        let expected_s = "5 directories, 10 files.";
+        let expected_s = "5 directories, 10 files.\n";
         assert!(create_fd_count(d).is_ok());
         assert_eq!(create_fd_count(d).unwrap(), expected_s);
     }
