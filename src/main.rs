@@ -33,11 +33,15 @@ impl WalkingEntry {
     fn push_line(&mut self, s: &str) {
         self.line.push_str(s)
     }
+
+    fn insert_ahead(&mut self, s: &str) {
+        self.line.insert_str(0, s);
+    }
 }
 
 struct Totals {
-    dirs: i32,
-    files: i32,
+    dirs: usize,
+    files: usize,
 }
 
 const SINGLE_ENTRY_STR: &str = "├── ";
@@ -53,40 +57,27 @@ fn main() {
 }
 
 fn emit_tree(root: &Path) -> Result<String, io::Error> {
-    let mut entries: Vec<WalkingEntry> = Vec::new();
-    let mut t = Totals { dirs: 0, files: 0 };
-    let mut last_d = 0;
-    let mut next_d = 0;
-    let mut has_more = false;
-    for entry in walkdir::WalkDir::new(root).sort_by_file_name() {
-        let de = entry.as_ref()
-            .unwrap();
+    let entries: Vec<WalkingEntry> = walkdir::WalkDir::new(root).sort_by_file_name().into_iter()
+        .filter(|de| de.is_ok())
+        .map(|de| de.unwrap())
+        .map(|de| WalkingEntry {
+                depth: de.depth(),
+                path: de.path().to_path_buf().to_owned(),
+                is_dir: de.path().is_dir(),
+                hidden: is_hidden(de.path()),
+                line: String::from(de.file_name().to_str().unwrap_or("")),
+        })
+        .collect();
 
-        let hidden: bool = is_hidden(de.path());
-        if hidden {
-            continue
-        }
-        last_d = if de.depth() > 0 { de.depth() - 1 } else { 0 };
-        next_d = de.depth();
-        // Figure out the line to print for this entry
-        let mut l = String::from(de.file_name().to_str().unwrap());
-        let mut we = WalkingEntry {
-            depth: de.depth(),
-            path: de.path().to_path_buf().to_owned(),
-            is_dir: de.path().is_dir(),
-            hidden,
-            line: l,
-        };
-        println!("Entry: {:?}", we);
-        entries.push(we);
-        if de.path().is_dir() && !de.path().eq(root) {
-            t.dirs += 1;
-        }
-        if de.path().is_file() {
-            t.files += 1;
-        }
-    };
-    Ok(format!("{:?} directories, {:?} files\n", t.dirs, t.files))
+    let d = entries.iter()
+        .filter(|&e| e.is_dir && !e.hidden && !e.path.eq(root))
+        .count();
+
+    let f = entries.iter()
+        .filter(|&e| !e.is_dir && !e.hidden)
+        .count();
+
+    Ok(format!("{:?} directories, {:?} files\n", d, f))
 }
 
 #[cfg(target_os = "windows")]
@@ -224,13 +215,13 @@ mod tests {
     }
 
     #[test]
-    fn create_fd_count_expected() {
-        let tmpdir = tempfile::tempdir()
+    fn emit_tree_expected() {
+        let tmpdir = tempfile::Builder::new().prefix("test").tempdir()
             .expect("should create tmpdir");
         let d = tmpdir.path();
         setup(d);
 
-        let expected_s = "5 directories, 10 files.\n";
+        let expected_s = "5 directories, 10 files\n";
         assert!(emit_tree(d).is_ok());
         assert_eq!(emit_tree(d).unwrap(), expected_s);
     }
