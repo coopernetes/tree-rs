@@ -20,6 +20,7 @@ use std::{env, io};
 use std::io::{stderr, stdout, Write};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 struct WalkingEntry {
     depth: usize,
     path: PathBuf,
@@ -28,10 +29,20 @@ struct WalkingEntry {
     line: String,
 }
 
+impl WalkingEntry {
+    fn push_line(&mut self, s: &str) {
+        self.line.push_str(s)
+    }
+}
+
 struct Totals {
     dirs: i32,
     files: i32,
 }
+
+const SINGLE_ENTRY_STR: &str = "├── ";
+const LAST_ENTRY_STR: &str = "└── ";
+const PARENT_DELIM_STR: &str = "│   ";
 
 fn main() {
     let str_vars = env::args().collect::<Vec<String>>();
@@ -44,35 +55,31 @@ fn main() {
 fn emit_tree(root: &Path) -> Result<String, io::Error> {
     let mut entries: Vec<WalkingEntry> = Vec::new();
     let mut t = Totals { dirs: 0, files: 0 };
-
-    for entry in walkdir::WalkDir::new(root).into_iter().skip(1) {
+    let mut last_d = 0;
+    let mut next_d = 0;
+    let mut has_more = false;
+    for entry in walkdir::WalkDir::new(root).sort_by_file_name() {
         let de = entry.as_ref()
             .unwrap();
 
-        let non_root_parts = de.path().iter().filter(|&de_part|
-                !root.iter().any(|r_part| r_part == de_part ))
-            .map(|os|
-                os.to_str().unwrap().to_string()
-            )
-            .collect::<Vec<String>>();
-        let skip = non_root_parts.iter().any(|s| {
-            let c = s.chars().next().unwrap();
-            c == '.'
-        });
-        if skip {
+        let hidden: bool = is_hidden(de.path());
+        if hidden {
             continue
         }
-
-        let hidden: bool = is_hidden_file(de.path());
-        let we = WalkingEntry {
+        last_d = if de.depth() > 0 { de.depth() - 1 } else { 0 };
+        next_d = de.depth();
+        // Figure out the line to print for this entry
+        let mut l = String::from(de.file_name().to_str().unwrap());
+        let mut we = WalkingEntry {
             depth: de.depth(),
             path: de.path().to_path_buf().to_owned(),
             is_dir: de.path().is_dir(),
             hidden,
-            line: String::from(""),
+            line: l,
         };
+        println!("Entry: {:?}", we);
         entries.push(we);
-        if de.path().is_dir() {
+        if de.path().is_dir() && !de.path().eq(root) {
             t.dirs += 1;
         }
         if de.path().is_file() {
@@ -85,7 +92,6 @@ fn emit_tree(root: &Path) -> Result<String, io::Error> {
 #[cfg(target_os = "windows")]
 fn is_hidden_file(p: &Path) -> bool {
     use std::fs::Metadata;
-    if !p.is_file() { return false }
     let f = fs::metadata(p);
     match f {
         Ok(_) => {
@@ -100,12 +106,10 @@ fn is_hidden_file(p: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn is_hidden_file(p: &Path) -> bool {
-    if !p.is_file() { return false };
-    match p.file_name() {
-        Some(n) => n.to_str().unwrap_or("").starts_with("."),
-        None => false,
-    }
+fn is_hidden(p: &Path) -> bool {
+    p.iter().map(|o| o.to_str())
+        .map(|s| s.unwrap())
+        .any(|s| s != "." && s.starts_with("."))
 }
 
 fn parse_args(args: Vec<String>) -> Result<(), i32>{
@@ -238,6 +242,26 @@ mod tests {
         let p = tmpdir.path().join(".a");
         fs::File::create(p.as_path())
             .expect(format!("unable to create temp file {:?}", p.to_str().unwrap_or("")).as_str());
-        assert!(is_hidden_file(Path::new(p.as_path())), "did not match")
+        assert!(is_hidden(Path::new(p.as_path())), "did not match")
+    }
+
+    #[test]
+    fn file_within_hidden_dir() {
+        let tmpdir = tempfile::tempdir()
+            .expect("could not create tmpdir");
+        fs::create_dir_all(tmpdir.path().join(".hidden").join("foo"))
+            .expect("could not create hidden test dir");
+        fs::File::create(tmpdir.path().join(".hidden").join("foo").join("bar"))
+            .expect("could not create test file foo");
+        assert!(is_hidden(tmpdir.path().join(".hidden").join("foo").join("bar").as_path()))
+    }
+
+    #[test]
+    fn subdir_within_hidden_dir() {
+        let tmpdir = tempfile::tempdir()
+            .expect("could not create tmpdir");
+        fs::create_dir_all(tmpdir.path().join(".hidden").join("foo"))
+            .expect("could not create hidden test dir");
+        assert!(is_hidden(tmpdir.path().join(".hidden").join("foo").as_path()))
     }
 }
