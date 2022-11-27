@@ -1,4 +1,5 @@
 out/
+*.o
 .idea/
 # Added by cargo
 

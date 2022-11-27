@@ -15,45 +15,97 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
+#![allow(dead_code)]
 use std::{env, io};
-use std::io::{stdout, stderr, Write};
-use std::path::Path;
+use std::io::{stderr, stdout, Write};
+use std::path::{Path, PathBuf};
+
+struct WalkingEntry {
+    depth: usize,
+    path: PathBuf,
+    is_dir: bool,
+    hidden: bool,
+    line: String,
+}
+
+struct Totals {
+    dirs: i32,
+    files: i32,
+}
 
 fn main() {
-    let env_vars = env::args();
-    let str_vars = env_vars.collect::<Vec<String>>();
+    let str_vars = env::args().collect::<Vec<String>>();
     match parse_args(str_vars) {
         Ok(_) => std::process::exit(0),
         Err(e) => std::process::exit(e),
     };
 }
 
-fn create_fd_count(root: &Path) -> Result<String, io::Error> {
-    let (mut d, mut f) = (0, 0);
+fn emit_tree(root: &Path) -> Result<String, io::Error> {
+    let mut entries: Vec<WalkingEntry> = Vec::new();
+    let mut t = Totals { dirs: 0, files: 0 };
+
     for entry in walkdir::WalkDir::new(root).into_iter().skip(1) {
         let de = entry.as_ref()
             .unwrap();
 
-        let non_root_parts = de.path().iter().filter(|&des| {
-            !root.iter().any(|rs| {
-                rs.to_str().expect("") == des.to_str().expect("")
-            })
-        }).collect::<Vec<_>>();
+        let non_root_parts = de.path().iter().filter(|&de_part|
+                !root.iter().any(|r_part| r_part == de_part ))
+            .map(|os|
+                os.to_str().unwrap().to_string()
+            )
+            .collect::<Vec<String>>();
         let skip = non_root_parts.iter().any(|s| {
-            let c = s.to_str().unwrap().chars().next().unwrap();
+            let c = s.chars().next().unwrap();
             c == '.'
         });
         if skip {
             continue
         }
+
+        let hidden: bool = is_hidden_file(de.path());
+        let we = WalkingEntry {
+            depth: de.depth(),
+            path: de.path().to_path_buf().to_owned(),
+            is_dir: de.path().is_dir(),
+            hidden,
+            line: String::from(""),
+        };
+        entries.push(we);
         if de.path().is_dir() {
-            d += 1;
+            t.dirs += 1;
         }
         if de.path().is_file() {
-            f += 1;
+            t.files += 1;
         }
     };
-    Ok(format!("{d} directories, {f} files.\n"))
+    Ok(format!("{:?} directories, {:?} files\n", t.dirs, t.files))
+}
+
+#[cfg(target_os = "windows")]
+fn is_hidden_file(p: &Path) -> bool {
+    use std::fs::Metadata;
+    if !p.is_file() { return false }
+    let f = fs::metadata(p);
+    match f {
+        Ok(_) => {
+            let a = f.file_attributes();
+            return (a & 0x2) > 0;
+        },
+        Err(e) => {
+            stderr().write_all(format!("Some error occurred, {}", e));
+            return false;
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn is_hidden_file(p: &Path) -> bool {
+    if !p.is_file() { return false };
+    match p.file_name() {
+        Some(n) => n.to_str().unwrap_or("").starts_with("."),
+        None => false,
+    }
 }
 
 fn parse_args(args: Vec<String>) -> Result<(), i32>{
@@ -63,11 +115,11 @@ fn parse_args(args: Vec<String>) -> Result<(), i32>{
         match arg.as_str() {
             "--help" => {
                 usage();
-                return Ok(())
+                return Ok(());
             }
             "--version" => {
                 version();
-                return Ok(())
+                return Ok(());
             }
             "-a" => a_flag = true,
             "-d" => d_flag = true,
@@ -81,7 +133,7 @@ fn parse_args(args: Vec<String>) -> Result<(), i32>{
     }
     //TODO: Remove this stderr message. Using to suppress rustc warnings (for now)
     write_to_err(format!("Flags: a={a_flag} d={d_flag} l={l_flag}\n"));
-    let out_s = create_fd_count(Path::new("."))
+    let out_s = emit_tree(Path::new("."))
         .or(Err(1));
     stdout().write_all(out_s?.as_bytes())
         .or(Err(1))
@@ -110,9 +162,10 @@ fn write_to_err(content: String) {
 mod tests {
 
     #![allow(unused_imports)]
-    use super::*;
+
     use std::fs;
-    use tempfile;
+
+    use super::*;
 
     fn setup(tmpdir: &Path) {
         for i in vec![1, 2, 3, 4, 5].iter() {
@@ -121,7 +174,7 @@ mod tests {
                     .expect("Unable to create temp dir");
                 fs::File::create(tmpdir
                     .join(format!("tmpd{i}"))
-                    .join(format!("f"))).expect("failed");
+                    .join("f")).expect("failed");
 
             }
             fs::File::create(tmpdir.join(format!("tmpf{i}")))
@@ -174,7 +227,17 @@ mod tests {
         setup(d);
 
         let expected_s = "5 directories, 10 files.\n";
-        assert!(create_fd_count(d).is_ok());
-        assert_eq!(create_fd_count(d).unwrap(), expected_s);
+        assert!(emit_tree(d).is_ok());
+        assert_eq!(emit_tree(d).unwrap(), expected_s);
+    }
+
+    #[test]
+    fn hidden_file() {
+        let tmpdir = tempfile::tempdir()
+            .expect("could not create tmpdir");
+        let p = tmpdir.path().join(".a");
+        fs::File::create(p.as_path())
+            .expect(format!("unable to create temp file {:?}", p.to_str().unwrap_or("")).as_str());
+        assert!(is_hidden_file(Path::new(p.as_path())), "did not match")
     }
 }
