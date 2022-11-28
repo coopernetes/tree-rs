@@ -29,16 +29,6 @@ struct WalkingEntry {
     line: String,
 }
 
-impl WalkingEntry {
-    fn push_line(&mut self, s: &str) {
-        self.line.push_str(s)
-    }
-
-    fn insert_ahead(&mut self, s: &str) {
-        self.line.insert_str(0, s);
-    }
-}
-
 struct Totals {
     dirs: usize,
     files: usize,
@@ -47,6 +37,7 @@ struct Totals {
 const SINGLE_ENTRY_STR: &str = "├── ";
 const LAST_ENTRY_STR: &str = "└── ";
 const PARENT_DELIM_STR: &str = "│   ";
+const MAX_DEPTH_DELIM_STR: &str = "    ";
 
 fn main() {
     let str_vars = env::args().collect::<Vec<String>>();
@@ -69,15 +60,50 @@ fn emit_tree(root: &Path) -> Result<String, io::Error> {
         })
         .collect();
 
+    let mut lines: Vec<String> = Vec::new();
+    let mut i = entries.iter()
+        .filter(|e| !e.hidden)
+        .into_iter()
+        .peekable();
+
+    let _max_d = entries.iter()
+        .map(|e| e.depth)
+        .max()
+        .unwrap_or(0);
+    let mut next_d: usize = 0;
+    loop {
+        let reached_end = i.peek().is_none();
+        if !reached_end {
+            next_d = i.peek().unwrap().depth
+        }
+        match i.next() {
+            Some(e) => {
+                let mut l = e.line.clone();
+                if !e.path.as_path().eq(root) {
+                    if next_d < e.depth {
+                        l.insert_str(0, LAST_ENTRY_STR);
+                    } else {
+                        l.insert_str(0, SINGLE_ENTRY_STR);
+                    }
+                }
+                for _ in 1..e.depth {
+                    l.insert_str(0, PARENT_DELIM_STR)
+                }
+                l.push_str("\n");
+                lines.push(l);
+            }
+            None => break
+        }
+    }
+
     let d = entries.iter()
         .filter(|&e| e.is_dir && !e.hidden && !e.path.eq(root))
         .count();
-
     let f = entries.iter()
         .filter(|&e| !e.is_dir && !e.hidden)
         .count();
-
-    Ok(format!("{:?} directories, {:?} files\n", d, f))
+    lines.push(format!("{:?} directories, {:?} files\n", d, f));
+    Ok(lines.join(""))
 }
 
 #[cfg(target_os = "windows")]
@@ -221,6 +247,10 @@ mod tests {
         let d = tmpdir.path();
         setup(d);
 
+        let actual = emit_tree(d);
+        if actual.is_ok() {
+            println!("{}", actual.unwrap())
+        }
         let expected_s = "5 directories, 10 files\n";
         assert!(emit_tree(d).is_ok());
         assert_eq!(emit_tree(d).unwrap(), expected_s);
