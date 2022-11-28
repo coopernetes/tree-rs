@@ -18,8 +18,8 @@ Restrictions:
 - [x] when called with no args, print `X directories, Y files`
 
 ## 0.1.2
-- [ ] display tree view of directories & files in current working dir
-- [ ] sort by name (default behaviour)
+- [x] display tree view of directories & files in current working dir
+- [x] sort by name (default behaviour)
 - [ ] support `-a` option (show all files including hidden)
 - [ ] support `-d` option (list directories only)
 - [ ] if any directory cannot be opened (permission, etc), return exit code 2. Else return 0 on success

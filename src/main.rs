@@ -66,28 +66,40 @@ fn emit_tree(root: &Path) -> Result<String, io::Error> {
         .into_iter()
         .peekable();
 
-    let _max_d = entries.iter()
+    let max_d = entries.iter()
         .map(|e| e.depth)
         .max()
         .unwrap_or(0);
     let mut next_d: usize = 0;
     loop {
-        let reached_end = i.peek().is_none();
-        if !reached_end {
-            next_d = i.peek().unwrap().depth
-        }
         match i.next() {
             Some(e) => {
+                let ahead = i.peek();
+                let reached_end = ahead.is_none();
+                if !reached_end {
+                    next_d = ahead.unwrap().depth
+                }
                 let mut l = e.line.clone();
                 if !e.path.as_path().eq(root) {
-                    if next_d < e.depth {
+                    if e.is_dir && e.depth+1 == max_d {
                         l.insert_str(0, LAST_ENTRY_STR);
                     } else {
-                        l.insert_str(0, SINGLE_ENTRY_STR);
+                        if next_d < e.depth || reached_end {
+                            l.insert_str(0, LAST_ENTRY_STR);
+                        } else {
+                            l.insert_str(0, SINGLE_ENTRY_STR);
+                        }
                     }
                 }
-                for _ in 1..e.depth {
-                    l.insert_str(0, PARENT_DELIM_STR)
+                if e.depth == max_d {
+                    l.insert_str(0, MAX_DEPTH_DELIM_STR);
+                    for _ in 1..e.depth-1 {
+                        l.insert_str(0, PARENT_DELIM_STR)
+                    }
+                } else {
+                    for _ in 1..e.depth {
+                        l.insert_str(0, PARENT_DELIM_STR)
+                    }
                 }
                 l.push_str("\n");
                 lines.push(l);
