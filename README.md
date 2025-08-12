@@ -1,4 +1,6 @@
 # tree-rs
+Archiving this for now. I may revisit this in the future.
+
 A rewrite of [tree](https://github.com/Old-Man-Programmer/tree) in Rust.
 
 Restrictions:
